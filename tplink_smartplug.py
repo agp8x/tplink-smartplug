@@ -26,6 +26,9 @@ from struct import pack
 
 version = 0.3
 
+__port_default__ = 9999
+__timeout_default__ = 10
+
 # Check if hostname is valid
 def validHostname(hostname):
 	try:
@@ -107,45 +110,50 @@ else:
 			result += chr(a)
 		return result
 
-# Parse commandline arguments
-parser = argparse.ArgumentParser(description="TP-Link Wi-Fi Smart Plug Client v" + str(version))
-parser.add_argument("-t", "--target", metavar="<hostname>", required=True, help="Target hostname or IP address", type=validHostname)
-parser.add_argument("-p", "--port", metavar="<port>", default=9999, required=False, help="Target port", type=validPort)
-parser.add_argument("-q", "--quiet", dest='quiet', action='store_true', help="Only show result")
-parser.add_argument("--timeout", default=10, required=False, help="Timeout to establish connection")
-group = parser.add_mutually_exclusive_group(required=True)
-group.add_argument("-c", "--command", metavar="<command>", help="Preset command to send. Choices are: "+", ".join(commands), choices=commands)
-group.add_argument("-j", "--json", metavar="<JSON string>", help="Full JSON string of command to send")
-args = parser.parse_args()
+def parse_args():
+	# Parse commandline arguments
+	parser = argparse.ArgumentParser(description="TP-Link Wi-Fi Smart Plug Client v" + str(version))
+	parser.add_argument("-t", "--target", metavar="<hostname>", required=True, help="Target hostname or IP address", type=validHostname)
+	parser.add_argument("-p", "--port", metavar="<port>", default=__port_default__, required=False, help="Target port", type=validPort)
+	parser.add_argument("-q", "--quiet", dest='quiet', action='store_true', help="Only show result")
+	parser.add_argument("--timeout", default=__timeout_default__, required=False, help="Timeout to establish connection")
+	group = parser.add_mutually_exclusive_group(required=True)
+	group.add_argument("-c", "--command", metavar="<command>", help="Preset command to send. Choices are: "+", ".join(commands), choices=commands)
+	group.add_argument("-j", "--json", metavar="<JSON string>", help="Full JSON string of command to send")
+	return parser.parse_args()
 
-
-# Set target IP, port and command to send
-ip = args.target
-port = args.port
-if args.command is None:
-	cmd = args.json
-else:
-	cmd = commands[args.command]
-
-
-
-# Send command and receive reply
-try:
+def query(ip, cmd, timeout=__timeout_default__, port=__port_default__):
 	sock_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-	sock_tcp.settimeout(int(args.timeout))
+	sock_tcp.settimeout(timeout)
 	sock_tcp.connect((ip, port))
 	sock_tcp.settimeout(None)
 	sock_tcp.send(encrypt(cmd))
 	data = sock_tcp.recv(2048)
 	sock_tcp.close()
 
-	decrypted = decrypt(data[4:])
+	return decrypt(data[4:])
 
-	if args.quiet:
-		print(decrypted)
+
+if __name__ == "__main__":
+	# Parse Arguments
+	args = parse_args()
+	# Set target IP, port and command to send
+	ip = args.target
+	port = args.port
+	if args.command is None:
+		cmd = args.json
 	else:
-		print("Sent:     ", cmd)
-		print("Received: ", decrypted)
+		cmd = commands[args.command]
 
-except socket.error:
-	quit("Could not connect to host " + ip + ":" + str(port))
+	# Send command and receive reply
+	try:
+		result = query(ip, cmd, int(args.timeout), port)
+
+		if args.quiet:
+			print(result)
+		else:
+			print("Sent:     ", cmd)
+			print("Received: ", result)
+
+	except socket.error:
+		quit("Could not connect to host " + ip + ":" + str(port))
